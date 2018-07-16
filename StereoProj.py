@@ -29,5 +29,3 @@ for atom in atoms:
     write_buf += str(atom.neigh_num()) + "\n"
 f_write.write(write_buf)
 
-
-aaaaaaaaaaaaaaaaaaa
