@@ -25,7 +25,7 @@ atoms = cfg.atoms
 f_write = open("neigh_num", 'w')
 
 write_buf = ""
-for atom in atoms:
-    write_buf += str(atom.neigh_num()) + "\n"
-f_write.write(write_buf)
+# for atom in atoms:
+#   write_buf += str(atom.neigh_num()) + "\n"
+# f_write.write(write_buf)
 
