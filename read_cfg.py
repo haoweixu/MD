@@ -76,6 +76,12 @@ class neighbor:
     self.pbc = pbc
     self.id = id
     self.dist = dist
+
+class bin:
+  def __init__(self, cord_index, is_real, atom_list):
+    self.is_real = is_real
+    self.index = cord_index
+    self.atom_list = atom_list
     
 # atom class. more atom properties shall be added here.
 class atom:
@@ -272,30 +278,161 @@ class cfg_file_class:
             
             new_atom = copy.copy(atomi)
             new_atom.r = r_shift
+            old_rc = atomi.reduced_cord
+            new_atom.reduced_cord = [old_rc[0]+ii, old_rc[1]+jj, \
+                                     old_rc[2]+kk]
             new_atom.pbc = [ii, jj, kk]
             self.atoms.append(new_atom)
             self.nghost += 1
    
-  def create_neigh_list(self, r_cut, nnn=None):
+  # def create_neigh_list(self, r_cut, nnn=None):
+  #   self.create_ghost_atoms(r_cut)
+  #   atoms = self.atoms
+  #   natoms = self.natoms
+  #   nghost = self.nghost
+  #   nall = natoms + nghost
+  #   # find out atoms (including ghost atoms) that are within
+  #   # the r_cut cutoff, add them to th neighbor list
+  #   for i in range(0, natoms):
+  #     ri = atoms[i].r
+  #     for j in itertools.chain(range(0,i), range(i+1,nall)):
+  #       rj = atoms[j].r
+  #       distij = dist(ri, rj)
+  #       if distij < r_cut:
+  #         new_neigh = neighbor(rj, atoms[j].pbc, atoms[j].id, distij)
+  #         self.atoms[i].neigh.append(new_neigh)
+  #
+  #     # if nnn is not None, nnn nearest neighbors are retained
+  #     # while others are discarded
+  #     if nnn != None:
+  #       atomi = atoms[i]
+  #       n_now = atomi.neigh_num()
+  #       if n_now > nnn:
+  #         neigh_dist = [atomi.neigh[ii].dist for ii in range(n_now)]
+  #         nnn_id = select3(neigh_dist, nnn)
+  #         new_neigh = [atomi.neigh[ii] for ii in nnn_id]
+  #         atomi.neigh = new_neigh
+
+  def create_neigh_list(self, r_cut, box_to_bin = 3, nnn=None):
     self.create_ghost_atoms(r_cut)
     atoms = self.atoms
     natoms = self.natoms
     nghost = self.nghost
     nall = natoms + nghost
-    # find out atoms (including ghost atoms) that are within 
-    # the r_cut cutoff, add them to th neighbor list
-    for i in range(0, natoms):
-      ri = atoms[i].r
-      for j in itertools.chain(range(0,i), range(i+1,nall)):
-        rj = atoms[j].r
-        distij = dist(ri, rj)
-        if distij < r_cut:
-          new_neigh = neighbor(rj, atoms[j].pbc, atoms[j].id, distij)
-          self.atoms[i].neigh.append(new_neigh)
-      
-      # if nnn is not None, nnn nearest neighbors are retained
-      # while others are discarded
-      if nnn != None:
+    H0 = self.H0
+    box_size_x = np.linalg.norm(H0[0][0])
+    box_size_y = np.linalg.norm(H0[1][1])
+    box_size_z = np.linalg.norm(H0[2][2])
+
+    nbin_x = math.floor(box_size_x / r_cut)
+    nbin_y = math.floor(box_size_y / r_cut)
+    nbin_z = math.floor(box_size_z / r_cut)
+
+    use_bin = nbin_x >= box_to_bin and \
+              nbin_y >= box_to_bin and \
+              nbin_z >= box_to_bin
+
+    if not use_bin:
+      for i in range(0, natoms):
+        ri = atoms[i].r
+        for j in itertools.chain(range(0,i), range(i+1,nall)):
+          rj = atoms[j].r
+          distij = dist(ri, rj)
+          if distij < r_cut:
+            new_neigh = neighbor(rj, atoms[j].pbc, atoms[j].id, distij)
+            self.atoms[i].neigh.append(new_neigh)
+    else:
+      # create bins and allocate atoms into bins
+      bin_list = []
+
+      bin_size_x = 1 / nbin_x
+      bin_size_y = 1 / nbin_y
+      bin_size_z = 1 / nbin_z
+
+      # include ghost bins
+      nbin_x += 2
+      nbin_y += 2
+      nbin_z += 2
+      # create bin lists
+      f = open("index", 'w')
+      for i in range( int(nbin_x*nbin_y*nbin_z) ):
+
+        z_index = math.floor(i/(nbin_x*nbin_y))
+        residue = i - z_index*nbin_x*nbin_y
+        y_index = math.floor( residue/nbin_x )
+        x_index = residue - y_index*nbin_x
+
+        is_real = x_index>0 and x_index<(nbin_x-1) and \
+                  y_index>0 and y_index<(nbin_y-1) and \
+                  z_index>0 and z_index<(nbin_z-1)
+
+        f.write("{0}\t{1}\t{2}\t{3}\n".format(x_index, y_index, z_index, is_real))
+
+        bin_list.append(bin([x_index, y_index, z_index], is_real, []))
+
+      # allocate atoms into bins
+
+      f2 = open("reduce_cord", 'w')
+      for i in range(nall):
+        atomi = atoms[i]
+        rc_i = atomi.reduced_cord
+        x_bin_cord = math.ceil(rc_i[0] / bin_size_x)
+        y_bin_cord = math.ceil(rc_i[1] / bin_size_y)
+        z_bin_cord = math.ceil(rc_i[2] / bin_size_z)
+        bin_index = int(z_bin_cord * nbin_x * nbin_y + \
+                        y_bin_cord * nbin_x + \
+                        x_bin_cord )
+        f2.write("{0}\t{1}\t{2}\n".format(rc_i[0], rc_i[1], rc_i[2]))
+        f2.write("{0}\t{1}\t{2}\t{3}\n".format(x_bin_cord, y_bin_cord, z_bin_cord, bin_index))
+
+        bin_list[bin_index].atom_list.append(i)
+
+      # for bin_i in bin_list:
+      #   print(bin_i.atom_list)
+
+      # finally, create neighbor list
+      f3 = open("nnn", 'w')
+      for bin_id in range(len(bin_list)):
+        bin_i = bin_list[bin_id]
+        if not bin_i.is_real:
+          continue
+
+        # find out neighbor bins, add their atom_list together
+
+        all_atoms = []
+
+        for ii in [-1, 0, 1]:
+          for jj in [-1, 0, 1]:
+            for kk in [-1, 0, 1]:
+              neigh_bin = int( bin_id + kk * nbin_x * nbin_y + \
+                                        jj * nbin_x + \
+                                        ii )
+              all_atoms += bin_list[neigh_bin].atom_list
+
+        # print(all_atoms)
+        # print(1)
+
+        for i in bin_i.atom_list:
+          if i>=4096:
+            print(i)
+          atomi = atoms[i]
+          r_i = atomi.r
+          for j in all_atoms:
+            if i == j:
+              continue
+            atomj = atoms[j]
+            r_j = atomj.r
+            distij = dist(r_i, r_j)
+            if distij < r_cut:
+              new_neigh = neighbor(r_j, atomj.pbc, atomj.id, distij)
+              atomi.neigh.append(new_neigh)
+
+          f3.write(str(atomi.neigh_num())+"\n")
+
+    #if nnn is not None, nnn nearest neighbors are retained
+    # while others are discarded
+    if nnn != None:
+      for i in range(natoms):
         atomi = atoms[i]
         n_now = atomi.neigh_num()
         if n_now > nnn:
@@ -303,8 +440,9 @@ class cfg_file_class:
           nnn_id = select3(neigh_dist, nnn)
           new_neigh = [atomi.neigh[ii] for ii in nnn_id]
           atomi.neigh = new_neigh
-  
-  
+
+
+
   # write cfg file data to lammps read_data file
   # read_cfg shall be called beforehand
   def cfg2lmpin(self, lmpin_file, dict, map2cubic = False, write2tric = False, charge = None):

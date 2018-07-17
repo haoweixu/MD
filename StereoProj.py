@@ -10,7 +10,7 @@ cfg.read_cfg(cfgfile, type_dict)
 
 r_cut = 10.0
 
-cfg.create_neigh_list(r_cut)
+cfg.create_neigh_list(r_cut, box_to_bin=100)
 
 data = cfg.pair_correlation(0.1, 10.0, 1000)
 
@@ -22,10 +22,11 @@ plt.show()
 
 atoms = cfg.atoms
 
-f_write = open("neigh_num", 'w')
+f_write = open("neigh_num_new", 'w')
 
 write_buf = ""
-# for atom in atoms:
-#   write_buf += str(atom.neigh_num()) + "\n"
-# f_write.write(write_buf)
+for atom in atoms:
+  rr = atom.reduced_cord
+  write_buf += str(atom.neigh_num()) + "\n"
+f_write.write(write_buf)
 
