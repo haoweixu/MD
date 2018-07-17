@@ -91,6 +91,8 @@ class atom:
     self.r    = r
     self.data  = data
     self.neigh = []
+    self.pbc = [0, 0, 0]
+    self.id = -1
     self.reduced_cord = np.zeros(3)
   def neigh_num(self):
     return len(self.neigh)
@@ -164,7 +166,7 @@ class cfg_file_class:
                          data[ 3+aux_dict['iz'] ]  ]
       
     atoms.append(new_atom)
-    
+
     # read remaining atoms
     while True:
       try:
@@ -175,11 +177,10 @@ class cfg_file_class:
         type = type_string.split()[0]
 #        type = type_string.rstrip('\n')       
         data = [float(i) for i in data_string.split()]
-        
-        new_atom.reduced_cord = [data[i] for i in range(3)]
-        r = np.matmul(H0, new_atom.reduced_cord)
         new_atom = atom(mass, type, r, [ii for ii in data])
-        
+        new_atom.reduced_cord = [data[i] for i in range(3)]
+        new_atom.r = np.matmul(H0, new_atom.reduced_cord)
+
         if 'id' in aux_dict:
           new_atom.id = int( data[ 3+aux_dict['id'] ] )
         if ('ix' in aux_dict) and ('iy' in aux_dict) and ('iz' in aux_dict):
@@ -276,7 +277,7 @@ class cfg_file_class:
             r_shift = np.add(jj*H0[1], r_shift)
             r_shift = np.add(kk*H0[2], r_shift)
             
-            new_atom = copy.copy(atomi)
+            new_atom = copy.deepcopy(atomi)
             new_atom.r = r_shift
             old_rc = atomi.reduced_cord
             new_atom.reduced_cord = [old_rc[0]+ii, old_rc[1]+jj, \
@@ -284,34 +285,6 @@ class cfg_file_class:
             new_atom.pbc = [ii, jj, kk]
             self.atoms.append(new_atom)
             self.nghost += 1
-   
-  # def create_neigh_list(self, r_cut, nnn=None):
-  #   self.create_ghost_atoms(r_cut)
-  #   atoms = self.atoms
-  #   natoms = self.natoms
-  #   nghost = self.nghost
-  #   nall = natoms + nghost
-  #   # find out atoms (including ghost atoms) that are within
-  #   # the r_cut cutoff, add them to th neighbor list
-  #   for i in range(0, natoms):
-  #     ri = atoms[i].r
-  #     for j in itertools.chain(range(0,i), range(i+1,nall)):
-  #       rj = atoms[j].r
-  #       distij = dist(ri, rj)
-  #       if distij < r_cut:
-  #         new_neigh = neighbor(rj, atoms[j].pbc, atoms[j].id, distij)
-  #         self.atoms[i].neigh.append(new_neigh)
-  #
-  #     # if nnn is not None, nnn nearest neighbors are retained
-  #     # while others are discarded
-  #     if nnn != None:
-  #       atomi = atoms[i]
-  #       n_now = atomi.neigh_num()
-  #       if n_now > nnn:
-  #         neigh_dist = [atomi.neigh[ii].dist for ii in range(n_now)]
-  #         nnn_id = select3(neigh_dist, nnn)
-  #         new_neigh = [atomi.neigh[ii] for ii in nnn_id]
-  #         atomi.neigh = new_neigh
 
   def create_neigh_list(self, r_cut, box_to_bin = 3, nnn=None):
     self.create_ghost_atoms(r_cut)
@@ -344,19 +317,16 @@ class cfg_file_class:
     else:
       # create bins and allocate atoms into bins
       bin_list = []
-
       bin_size_x = 1 / nbin_x
       bin_size_y = 1 / nbin_y
       bin_size_z = 1 / nbin_z
-
       # include ghost bins
       nbin_x += 2
       nbin_y += 2
       nbin_z += 2
-      # create bin lists
-      f = open("index", 'w')
-      for i in range( int(nbin_x*nbin_y*nbin_z) ):
 
+      # create bin lists
+      for i in range( int(nbin_x*nbin_y*nbin_z) ):
         z_index = math.floor(i/(nbin_x*nbin_y))
         residue = i - z_index*nbin_x*nbin_y
         y_index = math.floor( residue/nbin_x )
@@ -366,41 +336,28 @@ class cfg_file_class:
                   y_index>0 and y_index<(nbin_y-1) and \
                   z_index>0 and z_index<(nbin_z-1)
 
-        f.write("{0}\t{1}\t{2}\t{3}\n".format(x_index, y_index, z_index, is_real))
-
         bin_list.append(bin([x_index, y_index, z_index], is_real, []))
 
       # allocate atoms into bins
-
-      f2 = open("reduce_cord", 'w')
       for i in range(nall):
         atomi = atoms[i]
         rc_i = atomi.reduced_cord
-        x_bin_cord = math.ceil(rc_i[0] / bin_size_x)
-        y_bin_cord = math.ceil(rc_i[1] / bin_size_y)
-        z_bin_cord = math.ceil(rc_i[2] / bin_size_z)
+        x_bin_cord = int( math.ceil(rc_i[0] / bin_size_x) )
+        y_bin_cord = int( math.ceil(rc_i[1] / bin_size_y) )
+        z_bin_cord = int( math.ceil(rc_i[2] / bin_size_z) )
         bin_index = int(z_bin_cord * nbin_x * nbin_y + \
                         y_bin_cord * nbin_x + \
                         x_bin_cord )
-        f2.write("{0}\t{1}\t{2}\n".format(rc_i[0], rc_i[1], rc_i[2]))
-        f2.write("{0}\t{1}\t{2}\t{3}\n".format(x_bin_cord, y_bin_cord, z_bin_cord, bin_index))
-
         bin_list[bin_index].atom_list.append(i)
 
-      # for bin_i in bin_list:
-      #   print(bin_i.atom_list)
-
       # finally, create neighbor list
-      f3 = open("nnn", 'w')
       for bin_id in range(len(bin_list)):
         bin_i = bin_list[bin_id]
         if not bin_i.is_real:
           continue
 
         # find out neighbor bins, add their atom_list together
-
         all_atoms = []
-
         for ii in [-1, 0, 1]:
           for jj in [-1, 0, 1]:
             for kk in [-1, 0, 1]:
@@ -409,12 +366,7 @@ class cfg_file_class:
                                         ii )
               all_atoms += bin_list[neigh_bin].atom_list
 
-        # print(all_atoms)
-        # print(1)
-
         for i in bin_i.atom_list:
-          if i>=4096:
-            print(i)
           atomi = atoms[i]
           r_i = atomi.r
           for j in all_atoms:
@@ -427,8 +379,6 @@ class cfg_file_class:
               new_neigh = neighbor(r_j, atomj.pbc, atomj.id, distij)
               atomi.neigh.append(new_neigh)
 
-          f3.write(str(atomi.neigh_num())+"\n")
-
     #if nnn is not None, nnn nearest neighbors are retained
     # while others are discarded
     if nnn != None:
@@ -440,8 +390,6 @@ class cfg_file_class:
           nnn_id = select3(neigh_dist, nnn)
           new_neigh = [atomi.neigh[ii] for ii in nnn_id]
           atomi.neigh = new_neigh
-
-
 
   # write cfg file data to lammps read_data file
   # read_cfg shall be called beforehand
@@ -474,8 +422,8 @@ class cfg_file_class:
       if (charge != None):
         qi = charge[atomi.type] 
         write_buffer += "{index}\t{typeID}\t{q}\t{x}\t{y}\t{z}\n".\
-          format(index=(i+1), typeID=type_ID, q=qi,x=r[0], y=r[1], z=r[2])
-      else:      
+          format(index=(i+1), typeID=type_ID, q=qi, x=r[0], y=r[1], z=r[2])
+      else:
         write_buffer += "{index}\t{typeID}\t{x}\t{y}\t{z}\n".\
           format(index=(i+1), typeID=type_ID, x=r[0], y=r[1], z=r[2])
     f_write.write(write_buffer)
