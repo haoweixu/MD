@@ -501,25 +501,7 @@ class cfg_file_class:
     
     return r
 
-  def pair_correlation(self, low, high, nbins):
-    atoms = self.atoms
-    natoms = self.natoms
-    hist = np.zeros(nbins)
-    for i in range(natoms):
-      atomi = atoms[i]
-      neigh_dist = [neighii.dist for neighii in atomi.neigh]
-      ihist, edges = np.histogram(neigh_dist, bins=nbins, range=(low, high))
-      hist = [hist[ii] + ihist[ii] for ii in range(len(hist))]
-
-    center = [(edges[ii] + edges[ii + 1]) / 2 for ii in range(0, len(edges) - 1)]
-    deltar = center[1] - center[0]
-
-    g = [hist[ii] / (4 * math.pi * (center[ii]) ** 2 * deltar * natoms ** 1) \
-         for ii in range(len(hist))]
-
-    return [center, g]
-
-# calculate the distance between two atoms    
+# calculate the distance between two atoms
 def dist(r1, r2):
   if len(r1)!=3 or len(r2)!=3:
     raise Exception("A position vector must have length 3.")
