@@ -515,6 +515,8 @@ def phi(r1, r2):
   x = r1[0] - r2[0]
   y = r1[1] - r2[1]
   distxy = math.sqrt(x**2 + y**2)
+  if distxy < 1e-20:
+    return math.pi/2
   if y>0:
     return math.acos(x/distxy)
   else:

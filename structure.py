@@ -21,11 +21,12 @@ def pair_correlation(cfg, low, high, nbins):
 
   return [center, g]
 
-def stereo_proj(cfg, min_neigh, phi_bin=50, theta_bin=50):
+# bond orientational order diagram
+def bood(cfg, min_neigh, phi_bin=50, theta_bin=50):
   atoms = cfg.atoms
-  hist = np.zeros( (phi_bin, theta_bin) )
-  theta_incre = math.pi / theta_bin
-  phi_incre = 2*math.pi / phi_bin
+  hist = np.zeros( (phi_bin+1, theta_bin+1) )
+  theta_incre = math.pi / (theta_bin)
+  phi_incre = 2*math.pi / (phi_bin)
 
   for atomi in atoms:
     neigh_num = atomi.neigh_num()
@@ -36,9 +37,6 @@ def stereo_proj(cfg, min_neigh, phi_bin=50, theta_bin=50):
       rj = neighj.r
       theta_ij = int( math.floor(theta(ri, rj)/theta_incre) )
       phi_ij = int( math.floor(phi(ri, rj)/phi_incre) )
-      if phi_ij >= phi_bin:
-        print(phi_ij, phi(ri, rj))
-        phi_ij =  phi_bin - 1
       hist[phi_ij, theta_ij] += 1
 
   return hist
