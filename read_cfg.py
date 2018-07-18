@@ -1,8 +1,3 @@
-# The Albenze parameter of Si is simply:
-# A = sum[ (cos(theta_i)+1/3)^2 ]
-# where the sum is over the angles formed by neighbors of an atom
-# if N_neight == 4
-
 from __future__ import print_function
 # from scipy import special
 import numpy as np
